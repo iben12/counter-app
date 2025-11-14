@@ -51,13 +51,13 @@ func TestCreateCounterDuplicateName(t *testing.T) {
 	ctx := context.Background()
 
 	// Create first counter
-	_, err := CreateCounter(ctx, pool, "duplicate-test", "1d")
+	_, err := CreateCounter(ctx, pool, "duplicate-test", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create first counter: %v", err)
 	}
 
 	// Try to create second counter with same name
-	_, err = CreateCounter(ctx, pool, "duplicate-test", "2h")
+	_, err = CreateCounter(ctx, pool, "duplicate-test", "2h", "UTC")
 	if err == nil {
 		t.Error("expected error when creating duplicate counter, but got none")
 	}
@@ -73,7 +73,7 @@ func TestCreateCounterDefaultFrequency(t *testing.T) {
 
 	ctx := context.Background()
 
-	counter, err := CreateCounter(ctx, pool, "default-freq-test", "")
+	counter, err := CreateCounter(ctx, pool, "default-freq-test", "", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter with empty frequency: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestCreateCounterWithValidFrequencies(t *testing.T) {
 	validFrequencies := []string{"1h", "2d", "3w"}
 	for i, freq := range validFrequencies {
 		name := fmt.Sprintf("valid-freq-test-%d", i)
-		counter, err := CreateCounter(ctx, pool, name, freq)
+		counter, err := CreateCounter(ctx, pool, name, freq, "UTC")
 		if err != nil {
 			t.Errorf("failed to create counter with frequency %q: %v", freq, err)
 		}
@@ -128,7 +128,7 @@ func TestGetCounterByIDSuccess(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter
-	created, err := CreateCounter(ctx, pool, "get-test", "2d")
+	created, err := CreateCounter(ctx, pool, "get-test", "2d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestUpdateCounterFrequencySuccess(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter with initial frequency
-	counter, err := CreateCounter(ctx, pool, "update-test", "1h")
+	counter, err := CreateCounter(ctx, pool, "update-test", "1h", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -199,11 +199,11 @@ func TestGetAllCounters(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a few counters
-	_, err := CreateCounter(ctx, pool, "all-test-1", "1h")
+	_, err := CreateCounter(ctx, pool, "all-test-1", "1h", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter 1: %v", err)
 	}
-	_, err = CreateCounter(ctx, pool, "all-test-2", "1d")
+	_, err = CreateCounter(ctx, pool, "all-test-2", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter 2: %v", err)
 	}
@@ -239,19 +239,19 @@ func TestCounterNameConstraint(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter
-	_, err := CreateCounter(ctx, pool, "case-test", "1d")
+	_, err := CreateCounter(ctx, pool, "case-test", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
 
 	// Try to create with different case (should succeed because names are case-sensitive)
-	_, err = CreateCounter(ctx, pool, "Case-Test", "1d")
+	_, err = CreateCounter(ctx, pool, "Case-Test", "1d", "UTC")
 	if err != nil {
 		t.Errorf("expected success for case-different name, got error: %v", err)
 	}
 
 	// But exact duplicate should fail
-	_, err = CreateCounter(ctx, pool, "case-test", "1d")
+	_, err = CreateCounter(ctx, pool, "case-test", "1d", "UTC")
 	if err == nil {
 		t.Error("expected error for exact duplicate name, but got none")
 	}
@@ -264,7 +264,7 @@ func TestCounterCreatedAtNotZero(t *testing.T) {
 
 	ctx := context.Background()
 
-	counter, err := CreateCounter(ctx, pool, "timestamp-test", "1d")
+	counter, err := CreateCounter(ctx, pool, "timestamp-test", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestIncrementWithZeroDelta(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter and get initial count
-	counter, err := CreateCounter(ctx, pool, "zero-delta-test", "1d")
+	counter, err := CreateCounter(ctx, pool, "zero-delta-test", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestIncrementWithLargePositiveDelta(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter
-	counter, err := CreateCounter(ctx, pool, "large-delta-test", "1d")
+	counter, err := CreateCounter(ctx, pool, "large-delta-test", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestDecrementWithLargeNegativeDelta(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter
-	counter, err := CreateCounter(ctx, pool, "large-negative-delta-test", "1d")
+	counter, err := CreateCounter(ctx, pool, "large-negative-delta-test", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestCountValueUnderflowClamp(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter with initial count
-	counter, err := CreateCounter(ctx, pool, "underflow-test", "1d")
+	counter, err := CreateCounter(ctx, pool, "underflow-test", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -402,7 +402,7 @@ func TestCountUnderflowMultipleDecrements(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter
-	counter, err := CreateCounter(ctx, pool, "multi-underflow-test", "1d")
+	counter, err := CreateCounter(ctx, pool, "multi-underflow-test", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -473,7 +473,7 @@ func TestGetCountHistoryMultipleCounts(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter with 1h frequency
-	counter, err := CreateCounter(ctx, pool, "history-test", "1h")
+	counter, err := CreateCounter(ctx, pool, "history-test", "1h", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -522,7 +522,7 @@ func TestCountExpiryTime(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter
-	counter, err := CreateCounter(ctx, pool, "expiry-test", "1d")
+	counter, err := CreateCounter(ctx, pool, "expiry-test", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
