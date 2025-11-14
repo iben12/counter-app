@@ -15,16 +15,22 @@ type Server struct {
 }
 
 func NewRouter(pool *pgxpool.Pool) http.Handler {
-    s := &Server{db: pool}
-    r := mux.NewRouter()
-    r.HandleFunc("/health", s.health).Methods("GET")
+	s := &Server{db: pool}
+	r := mux.NewRouter()
+	r.HandleFunc("/health", s.health).Methods("GET")
 
-    r.HandleFunc("/counters", s.listCounters).Methods("GET")
-    r.HandleFunc("/counters", s.createCounter).Methods("POST")
-    r.HandleFunc("/counters/{id}", s.getCounter).Methods("GET")
-    r.HandleFunc("/counters/{id}/frequency", s.updateCounterFrequency).Methods("POST")
+	r.HandleFunc("/counters", s.listCounters).Methods("GET")
+	r.HandleFunc("/counters", s.createCounter).Methods("POST")
+	r.HandleFunc("/counters/{id}", s.getCounter).Methods("GET")
+	r.HandleFunc("/counters/{id}/frequency", s.updateCounterFrequency).Methods("POST")
 
-    return r
+	// Count endpoints
+	r.HandleFunc("/counters/{id}/count", s.getCurrentCount).Methods("GET")
+	r.HandleFunc("/counters/{id}/count/increment", s.incrementCount).Methods("POST")
+	r.HandleFunc("/counters/{id}/count/decrement", s.decrementCount).Methods("POST")
+	r.HandleFunc("/counters/{id}/counts", s.getCountHistory).Methods("GET")
+
+	return r
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -91,27 +97,116 @@ type incFreqReq struct {
 }
 
 func (s *Server) updateCounterFrequency(w http.ResponseWriter, r *http.Request) {
-    vars := mux.Vars(r)
-    idStr := vars["id"]
-    id, err := strconv.ParseInt(idStr, 10, 64)
-    if err != nil {
-        http.Error(w, "invalid id", http.StatusBadRequest)
-        return
-    }
-    var req incFreqReq
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        http.Error(w, "bad request", http.StatusBadRequest)
-        return
-    }
-    if req.Frequency == "" {
-        http.Error(w, "frequency required", http.StatusBadRequest)
-        return
-    }
-    c, err := models.UpdateCounterFrequency(r.Context(), s.db, id, req.Frequency)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-    w.Header().Set("Content-Type", "application/json")
-    _ = json.NewEncoder(w).Encode(c)
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var req incFreqReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if req.Frequency == "" {
+		http.Error(w, "frequency required", http.StatusBadRequest)
+		return
+	}
+	c, err := models.UpdateCounterFrequency(r.Context(), s.db, id, req.Frequency)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(c)
+}
+
+type incCountReq struct {
+	Delta int64 `json:"delta"`
+}
+
+func (s *Server) getCurrentCount(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	cnt, err := models.GetOrCreateCurrentCount(r.Context(), s.db, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(cnt)
+}
+
+func (s *Server) incrementCount(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var req incCountReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// default delta to 1 if no body
+		req.Delta = 1
+	}
+	if req.Delta == 0 {
+		req.Delta = 1
+	}
+	cnt, err := models.IncrementCurrentCount(r.Context(), s.db, id, req.Delta)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(cnt)
+}
+
+func (s *Server) decrementCount(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var req incCountReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// default delta to 1 if no body
+		req.Delta = 1
+	}
+	if req.Delta == 0 {
+		req.Delta = 1
+	}
+	// Use negative delta to decrement
+	cnt, err := models.IncrementCurrentCount(r.Context(), s.db, id, -req.Delta)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(cnt)
+}
+
+func (s *Server) getCountHistory(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	counts, err := models.GetCountHistory(r.Context(), s.db, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(counts)
 }

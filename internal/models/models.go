@@ -1,10 +1,12 @@
 package models
 
 import (
-    "context"
-    "errors"
+	"context"
+	"errors"
+	"time"
 
-    "github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/iben12/counter-app/internal/db"
 )
 
 type Counter struct {
@@ -54,12 +56,125 @@ func GetCounterByID(ctx context.Context, pool *pgxpool.Pool, id int64) (*Counter
 }
 
 func UpdateCounterFrequency(ctx context.Context, pool *pgxpool.Pool, id int64, frequency string) (*Counter, error) {
-    tag, err := pool.Exec(ctx, "UPDATE counters SET frequency = $1 WHERE id = $2", frequency, id)
-    if err != nil {
-        return nil, err
-    }
-    if tag.RowsAffected() == 0 {
-        return nil, errors.New("not found")
-    }
-    return GetCounterByID(ctx, pool, id)
+	tag, err := pool.Exec(ctx, "UPDATE counters SET frequency = $1 WHERE id = $2", frequency, id)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, errors.New("not found")
+	}
+	return GetCounterByID(ctx, pool, id)
+}
+
+// Count represents a count record with value and expiry aligned to calendar boundaries.
+type Count struct {
+	ID        int64  `json:"id"`
+	CounterID int64  `json:"counter_id"`
+	Value     int64  `json:"value"`
+	Expiry    string `json:"expiry"`
+	CreatedAt string `json:"created_at"`
+}
+
+// GetOrCreateCurrentCount retrieves the current (non-expired) count for a counter,
+// creating a new one if the existing one has expired.
+func GetOrCreateCurrentCount(ctx context.Context, pool *pgxpool.Pool, counterID int64) (*Count, error) {
+	counter, err := GetCounterByID(ctx, pool, counterID)
+	if err != nil {
+		return nil, err
+	}
+
+	var c Count
+	// Try to get the current (latest) count
+	var expiryTime time.Time
+	var createdAt time.Time
+	err = pool.QueryRow(ctx,
+		"SELECT id, counter_id, value, expiry, created_at FROM counts WHERE counter_id = $1 ORDER BY id DESC LIMIT 1",
+		counterID).Scan(&c.ID, &c.CounterID, &c.Value, &expiryTime, &createdAt)
+	if err != nil {
+		// No count exists yet, create one
+		return createNewCount(ctx, pool, counterID, counter.Frequency)
+	}
+
+	c.Expiry = expiryTime.UTC().Format(time.RFC3339)
+	c.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+
+	// Check if current count is expired
+	if time.Now().UTC().After(expiryTime) {
+		// Expired, create new count
+		return createNewCount(ctx, pool, counterID, counter.Frequency)
+	}
+
+	return &c, nil
+}
+
+// createNewCount creates a new count record with value 0 and expiry based on the counter's frequency.
+func createNewCount(ctx context.Context, pool *pgxpool.Pool, counterID int64, frequency string) (*Count, error) {
+	expiry, err := db.NextExpiryTime(frequency, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+
+	var c Count
+	var expiryTime time.Time
+	var createdAt time.Time
+	err = pool.QueryRow(ctx,
+		"INSERT INTO counts (counter_id, value, expiry) VALUES ($1, 0, $2) RETURNING id, counter_id, value, expiry, created_at",
+		counterID, expiry).Scan(&c.ID, &c.CounterID, &c.Value, &expiryTime, &createdAt)
+	if err == nil {
+		c.Expiry = expiryTime.UTC().Format(time.RFC3339)
+		c.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// IncrementCurrentCount increments the current count by delta. If expired, creates a new one first.
+func IncrementCurrentCount(ctx context.Context, pool *pgxpool.Pool, counterID int64, delta int64) (*Count, error) {
+	current, err := GetOrCreateCurrentCount(ctx, pool, counterID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Increment the value
+	var c Count
+	var expiryTime time.Time
+	var createdAt time.Time
+	err = pool.QueryRow(ctx,
+		"UPDATE counts SET value = value + $1 WHERE id = $2 RETURNING id, counter_id, value, expiry, created_at",
+		delta, current.ID).Scan(&c.ID, &c.CounterID, &c.Value, &expiryTime, &createdAt)
+	if err == nil {
+		c.Expiry = expiryTime.UTC().Format(time.RFC3339)
+		c.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// GetCountHistory retrieves all count records for a counter, ordered by creation time descending.
+func GetCountHistory(ctx context.Context, pool *pgxpool.Pool, counterID int64) ([]Count, error) {
+	rows, err := pool.Query(ctx,
+		"SELECT id, counter_id, value, expiry, created_at FROM counts WHERE counter_id = $1 ORDER BY created_at DESC",
+		counterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var counts []Count
+	for rows.Next() {
+		var c Count
+		var expiryTime time.Time
+		var createdAt time.Time
+		if err := rows.Scan(&c.ID, &c.CounterID, &c.Value, &expiryTime, &createdAt); err != nil {
+			return nil, err
+		}
+		c.Expiry = expiryTime.UTC().Format(time.RFC3339)
+		c.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+		counts = append(counts, c)
+	}
+	return counts, nil
 }
