@@ -137,7 +137,7 @@ func TestGetCounter(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter
-	counter, err := models.CreateCounter(ctx, pool, "test-get", "2d")
+	counter, err := models.CreateCounter(ctx, pool, "test-get", "2d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -173,11 +173,11 @@ func TestListCounters(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a few counters
-	models.CreateCounter(ctx, pool, "counter1", "1h")
-	models.CreateCounter(ctx, pool, "counter2", "1d")
+	models.CreateCounter(ctx, pool, "counter1", "1h", "UTC")
+	models.CreateCounter(ctx, pool, "counter2", "1d", "UTC")
 
-	router := NewRouter(pool)
 	req, _ := http.NewRequest("GET", "/counters", nil)
+	router := NewRouter(pool)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -204,7 +204,7 @@ func TestUpdateCounterFrequency(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter
-	counter, err := models.CreateCounter(ctx, pool, "test-update", "1d")
+	counter, err := models.CreateCounter(ctx, pool, "test-update", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestGetCurrentCount(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter
-	counter, err := models.CreateCounter(ctx, pool, "test-current-count", "1d")
+	counter, err := models.CreateCounter(ctx, pool, "test-current-count", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -278,7 +278,7 @@ func TestIncrementCount(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter and get initial count
-	counter, err := models.CreateCounter(ctx, pool, "test-increment", "1d")
+	counter, err := models.CreateCounter(ctx, pool, "test-increment", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -333,7 +333,7 @@ func TestDecrementCount(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter and get initial count
-	counter, err := models.CreateCounter(ctx, pool, "test-decrement", "1d")
+	counter, err := models.CreateCounter(ctx, pool, "test-decrement", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -380,7 +380,7 @@ func TestGetCountHistory(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter
-	counter, err := models.CreateCounter(ctx, pool, "test-history", "1h")
+	counter, err := models.CreateCounter(ctx, pool, "test-history", "1h", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -425,7 +425,7 @@ func TestCountExpiryReset(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter with 1h frequency
-	counter, err := models.CreateCounter(ctx, pool, "test-expiry", "1h")
+	counter, err := models.CreateCounter(ctx, pool, "test-expiry", "1h", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}
@@ -462,7 +462,7 @@ func TestIncrementDecrementSameRow(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a counter
-	counter, err := models.CreateCounter(ctx, pool, "test-same-row", "1d")
+	counter, err := models.CreateCounter(ctx, pool, "test-same-row", "1d", "UTC")
 	if err != nil {
 		t.Fatalf("failed to create counter: %v", err)
 	}

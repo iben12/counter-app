@@ -75,7 +75,7 @@ func TestNextExpiryTime(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NextExpiryTime(tt.freq, tt.now)
+			got, err := NextExpiryTime(tt.freq, tt.now, "UTC")
 			if err != nil {
 				t.Fatalf("NextExpiryTime() error = %v", err)
 			}
@@ -92,7 +92,7 @@ func TestNextExpiryTimeManual(t *testing.T) {
 	fmt.Printf("Now: %s (Friday)\n", now.Format("2006-01-02 15:04 (Monday)"))
 
 	for _, freq := range []string{"1h", "2h", "1d", "2d", "1w"} {
-		exp, _ := NextExpiryTime(freq, now)
+		exp, _ := NextExpiryTime(freq, now, "UTC")
 		fmt.Printf("Freq %s -> Expiry: %s\n", freq, exp.Format("2006-01-02 15:04 (Monday)"))
 	}
 }
