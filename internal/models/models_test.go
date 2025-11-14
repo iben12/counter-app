@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/iben12/counter-app/internal/db"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,7 +29,14 @@ func setupTestDB(t *testing.T) (*pgxpool.Pool, func()) {
 		t.Fatalf("failed to run migrations: %v", err)
 	}
 
+	// Truncate tables before test to ensure clean state
+	pool.Exec(ctx, "TRUNCATE TABLE counts RESTART IDENTITY CASCADE")
+	pool.Exec(ctx, "TRUNCATE TABLE counters RESTART IDENTITY CASCADE")
+
 	cleanup := func() {
+		// Truncate tables after test to clean up
+		pool.Exec(ctx, "TRUNCATE TABLE counts RESTART IDENTITY CASCADE")
+		pool.Exec(ctx, "TRUNCATE TABLE counters RESTART IDENTITY CASCADE")
 		pool.Close()
 	}
 
@@ -263,5 +271,274 @@ func TestCounterCreatedAtNotZero(t *testing.T) {
 
 	if counter.CreatedAt == "" {
 		t.Error("expected non-empty created_at timestamp")
+	}
+}
+
+// ===== Count Model Edge Case Tests =====
+
+// TestIncrementWithZeroDelta tests that IncrementCurrentCount rejects zero delta.
+func TestIncrementWithZeroDelta(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a counter and get initial count
+	counter, err := CreateCounter(ctx, pool, "zero-delta-test", "1d")
+	if err != nil {
+		t.Fatalf("failed to create counter: %v", err)
+	}
+
+	GetOrCreateCurrentCount(ctx, pool, counter.ID)
+
+	// Try to increment with zero delta
+	_, err = IncrementCurrentCount(ctx, pool, counter.ID, 0)
+	if err == nil {
+		t.Error("expected error when incrementing with zero delta, but got none")
+	}
+	if err != nil && err.Error() != "delta must be non-zero" {
+		t.Errorf("expected 'delta must be non-zero' error, got: %v", err)
+	}
+}
+
+// TestIncrementWithLargePositiveDelta tests that IncrementCurrentCount accepts large positive deltas.
+func TestIncrementWithLargePositiveDelta(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a counter
+	counter, err := CreateCounter(ctx, pool, "large-delta-test", "1d")
+	if err != nil {
+		t.Fatalf("failed to create counter: %v", err)
+	}
+
+	GetOrCreateCurrentCount(ctx, pool, counter.ID)
+
+	// Increment with large positive delta
+	count, err := IncrementCurrentCount(ctx, pool, counter.ID, 1000000)
+	if err != nil {
+		t.Fatalf("failed to increment with large delta: %v", err)
+	}
+
+	if count.Value != 1000000 {
+		t.Errorf("expected value 1000000, got %d", count.Value)
+	}
+}
+
+// TestDecrementWithLargeNegativeDelta tests that IncrementCurrentCount handles large negative deltas (decrement).
+func TestDecrementWithLargeNegativeDelta(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a counter
+	counter, err := CreateCounter(ctx, pool, "large-negative-delta-test", "1d")
+	if err != nil {
+		t.Fatalf("failed to create counter: %v", err)
+	}
+
+	GetOrCreateCurrentCount(ctx, pool, counter.ID)
+
+	// Increment to 100
+	IncrementCurrentCount(ctx, pool, counter.ID, 100)
+
+	// Decrement with large negative delta (should clamp to 0)
+	count, err := IncrementCurrentCount(ctx, pool, counter.ID, -1000000)
+	if err != nil {
+		t.Fatalf("failed to decrement with large negative delta: %v", err)
+	}
+
+	if count.Value != 0 {
+		t.Errorf("expected clamped value 0 after large negative delta, got %d", count.Value)
+	}
+}
+
+// TestCountValueUnderflowClamp tests that count value is clamped to zero (no negative values).
+func TestCountValueUnderflowClamp(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a counter with initial count
+	counter, err := CreateCounter(ctx, pool, "underflow-test", "1d")
+	if err != nil {
+		t.Fatalf("failed to create counter: %v", err)
+	}
+
+	count, err := GetOrCreateCurrentCount(ctx, pool, counter.ID)
+	if err != nil {
+		t.Fatalf("failed to get current count: %v", err)
+	}
+
+	// Increment to 5
+	count, err = IncrementCurrentCount(ctx, pool, counter.ID, 5)
+	if err != nil {
+		t.Fatalf("failed to increment: %v", err)
+	}
+	if count.Value != 5 {
+		t.Errorf("expected value 5, got %d", count.Value)
+	}
+
+	// Now decrement by 10 (should clamp to 0, not go negative)
+	count, err = IncrementCurrentCount(ctx, pool, counter.ID, -10)
+	if err != nil {
+		t.Fatalf("failed to decrement: %v", err)
+	}
+
+	if count.Value != 0 {
+		t.Errorf("expected clamped value 0 after underflow, got %d", count.Value)
+	}
+}
+
+// TestCountUnderflowMultipleDecrements tests that multiple decrments clamp to zero.
+func TestCountUnderflowMultipleDecrements(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a counter
+	counter, err := CreateCounter(ctx, pool, "multi-underflow-test", "1d")
+	if err != nil {
+		t.Fatalf("failed to create counter: %v", err)
+	}
+
+	GetOrCreateCurrentCount(ctx, pool, counter.ID)
+
+	// Increment to 3
+	count, err := IncrementCurrentCount(ctx, pool, counter.ID, 3)
+	if err != nil {
+		t.Fatalf("failed to increment: %v", err)
+	}
+	if count.Value != 3 {
+		t.Errorf("expected value 3, got %d", count.Value)
+	}
+
+	// Decrement by 2 (should be 1)
+	count, err = IncrementCurrentCount(ctx, pool, counter.ID, -2)
+	if err != nil {
+		t.Fatalf("failed to decrement: %v", err)
+	}
+	if count.Value != 1 {
+		t.Errorf("expected value 1, got %d", count.Value)
+	}
+
+	// Decrement by 5 (should clamp to 0, not -4)
+	count, err = IncrementCurrentCount(ctx, pool, counter.ID, -5)
+	if err != nil {
+		t.Fatalf("failed to decrement: %v", err)
+	}
+	if count.Value != 0 {
+		t.Errorf("expected clamped value 0, got %d", count.Value)
+	}
+
+	// Decrement again when already at 0 (should stay 0)
+	count, err = IncrementCurrentCount(ctx, pool, counter.ID, -1)
+	if err != nil {
+		t.Fatalf("failed to decrement: %v", err)
+	}
+	if count.Value != 0 {
+		t.Errorf("expected value to remain 0, got %d", count.Value)
+	}
+}
+
+// TestGetCountHistoryNonExistentCounter tests that GetCountHistory returns error for non-existent counter.
+func TestGetCountHistoryNonExistentCounter(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Try to get history for a counter that doesn't exist
+	history, err := GetCountHistory(ctx, pool, 999999)
+	if err != nil {
+		t.Fatalf("expected empty history or no error, got: %v", err)
+	}
+
+	// History should be empty (no counts for non-existent counter)
+	if len(history) != 0 {
+		t.Errorf("expected empty history for non-existent counter, got %d counts", len(history))
+	}
+}
+
+// TestGetCountHistoryMultipleCounts tests that GetCountHistory returns all counts ordered by creation time.
+func TestGetCountHistoryMultipleCounts(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a counter with 1h frequency
+	counter, err := CreateCounter(ctx, pool, "history-test", "1h")
+	if err != nil {
+		t.Fatalf("failed to create counter: %v", err)
+	}
+
+	// Create first count and increment
+	count1, err := GetOrCreateCurrentCount(ctx, pool, counter.ID)
+	if err != nil {
+		t.Fatalf("failed to get initial count: %v", err)
+	}
+	IncrementCurrentCount(ctx, pool, counter.ID, 5)
+
+	// Manually create a "historical" count by setting its expiry to the past
+	updateExpirySQL := `UPDATE counts SET expiry = now() - interval '2 hours' WHERE id = $1`
+	_, err = pool.Exec(ctx, updateExpirySQL, count1.ID)
+	if err != nil {
+		t.Fatalf("failed to update expiry: %v", err)
+	}
+
+	// Get or create a new count (should create a new one since previous is expired)
+	count2, err := GetOrCreateCurrentCount(ctx, pool, counter.ID)
+	if err != nil {
+		t.Fatalf("failed to get new count after expiry: %v", err)
+	}
+
+	// Now we should have 2 counts in history
+	history, err := GetCountHistory(ctx, pool, counter.ID)
+	if err != nil {
+		t.Fatalf("failed to get history: %v", err)
+	}
+
+	if len(history) < 2 {
+		t.Errorf("expected at least 2 counts in history, got %d", len(history))
+	}
+
+	// Verify newer count comes first (ordered by creation_at DESC)
+	if history[0].ID != count2.ID {
+		t.Errorf("expected newest count (ID %d) first, got ID %d", count2.ID, history[0].ID)
+	}
+}
+
+// TestCountExpiryTime tests that Count expiry time is correct and not empty.
+func TestCountExpiryTime(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a counter
+	counter, err := CreateCounter(ctx, pool, "expiry-test", "1d")
+	if err != nil {
+		t.Fatalf("failed to create counter: %v", err)
+	}
+
+	count, err := GetOrCreateCurrentCount(ctx, pool, counter.ID)
+	if err != nil {
+		t.Fatalf("failed to get current count: %v", err)
+	}
+
+	if count.Expiry == "" {
+		t.Error("expected non-empty expiry timestamp")
+	}
+
+	// Parse the expiry to verify it's a valid RFC3339 timestamp
+	_, err = time.Parse(time.RFC3339, count.Expiry)
+	if err != nil {
+		t.Errorf("expected valid RFC3339 timestamp, got: %v", err)
 	}
 }
