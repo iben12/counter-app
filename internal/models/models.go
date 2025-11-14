@@ -10,13 +10,16 @@ import (
 type Counter struct {
     ID        int64  `json:"id"`
     Name      string `json:"name"`
-    Value     int64  `json:"value"`
+    Frequency string `json:"frequency"`
     CreatedAt string `json:"created_at"`
 }
 
-func CreateCounter(ctx context.Context, pool *pgxpool.Pool, name string) (*Counter, error) {
+func CreateCounter(ctx context.Context, pool *pgxpool.Pool, name string, frequency string) (*Counter, error) {
     var c Counter
-    err := pool.QueryRow(ctx, "INSERT INTO counters (name, value) VALUES ($1, 0) RETURNING id, name, value, created_at", name).Scan(&c.ID, &c.Name, &c.Value, &c.CreatedAt)
+    if frequency == "" {
+        frequency = "1d"
+    }
+    err := pool.QueryRow(ctx, "INSERT INTO counters (name, frequency) VALUES ($1, $2) RETURNING id, name, frequency, created_at::TEXT", name, frequency).Scan(&c.ID, &c.Name, &c.Frequency, &c.CreatedAt)
     if err != nil {
         return nil, err
     }
@@ -24,7 +27,7 @@ func CreateCounter(ctx context.Context, pool *pgxpool.Pool, name string) (*Count
 }
 
 func GetAllCounters(ctx context.Context, pool *pgxpool.Pool) ([]Counter, error) {
-    rows, err := pool.Query(ctx, "SELECT id, name, value, created_at FROM counters ORDER BY id")
+    rows, err := pool.Query(ctx, "SELECT id, name, frequency, created_at::TEXT FROM counters ORDER BY id")
     if err != nil {
         return nil, err
     }
@@ -33,7 +36,7 @@ func GetAllCounters(ctx context.Context, pool *pgxpool.Pool) ([]Counter, error) 
     var out []Counter
     for rows.Next() {
         var c Counter
-        if err := rows.Scan(&c.ID, &c.Name, &c.Value, &c.CreatedAt); err != nil {
+        if err := rows.Scan(&c.ID, &c.Name, &c.Frequency, &c.CreatedAt); err != nil {
             return nil, err
         }
         out = append(out, c)
@@ -43,17 +46,15 @@ func GetAllCounters(ctx context.Context, pool *pgxpool.Pool) ([]Counter, error) 
 
 func GetCounterByID(ctx context.Context, pool *pgxpool.Pool, id int64) (*Counter, error) {
     var c Counter
-    err := pool.QueryRow(ctx, "SELECT id, name, value, created_at FROM counters WHERE id=$1", id).Scan(&c.ID, &c.Name, &c.Value, &c.CreatedAt)
+    err := pool.QueryRow(ctx, "SELECT id, name, frequency, created_at::TEXT FROM counters WHERE id=$1", id).Scan(&c.ID, &c.Name, &c.Frequency, &c.CreatedAt)
     if err != nil {
         return nil, err
     }
     return &c, nil
 }
 
-func IncrementCounter(ctx context.Context, pool *pgxpool.Pool, id int64, delta int64) (*Counter, error) {
-    // Update and return new row
-    var c Counter
-    tag, err := pool.Exec(ctx, "UPDATE counters SET value = value + $1 WHERE id = $2", delta, id)
+func UpdateCounterFrequency(ctx context.Context, pool *pgxpool.Pool, id int64, frequency string) (*Counter, error) {
+    tag, err := pool.Exec(ctx, "UPDATE counters SET frequency = $1 WHERE id = $2", frequency, id)
     if err != nil {
         return nil, err
     }

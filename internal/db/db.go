@@ -19,10 +19,11 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 // Migrate runs small, idempotent SQL migration(s) needed for development.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
     sql := `
-    CREATE TABLE IF NOT EXISTS counters (
+    DROP TABLE IF EXISTS counters;
+    CREATE TABLE counters (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
-        value BIGINT NOT NULL DEFAULT 0,
+        frequency TEXT NOT NULL DEFAULT '1d',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
     );
     `

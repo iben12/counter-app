@@ -22,7 +22,7 @@ func NewRouter(pool *pgxpool.Pool) http.Handler {
     r.HandleFunc("/counters", s.listCounters).Methods("GET")
     r.HandleFunc("/counters", s.createCounter).Methods("POST")
     r.HandleFunc("/counters/{id}", s.getCounter).Methods("GET")
-    r.HandleFunc("/counters/{id}/increment", s.incrementCounter).Methods("POST")
+    r.HandleFunc("/counters/{id}/frequency", s.updateCounterFrequency).Methods("POST")
 
     return r
 }
@@ -45,7 +45,8 @@ func (s *Server) listCounters(w http.ResponseWriter, r *http.Request) {
 }
 
 type createReq struct {
-    Name string `json:"name"`
+    Name      string `json:"name"`
+    Frequency string `json:"frequency,omitempty"`
 }
 
 func (s *Server) createCounter(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +59,7 @@ func (s *Server) createCounter(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "name required", http.StatusBadRequest)
         return
     }
-    c, err := models.CreateCounter(r.Context(), s.db, req.Name)
+    c, err := models.CreateCounter(r.Context(), s.db, req.Name, req.Frequency)
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
@@ -85,11 +86,11 @@ func (s *Server) getCounter(w http.ResponseWriter, r *http.Request) {
     _ = json.NewEncoder(w).Encode(c)
 }
 
-type incReq struct {
-    Delta int64 `json:"delta"`
+type incFreqReq struct {
+    Frequency string `json:"frequency"`
 }
 
-func (s *Server) incrementCounter(w http.ResponseWriter, r *http.Request) {
+func (s *Server) updateCounterFrequency(w http.ResponseWriter, r *http.Request) {
     vars := mux.Vars(r)
     idStr := vars["id"]
     id, err := strconv.ParseInt(idStr, 10, 64)
@@ -97,15 +98,16 @@ func (s *Server) incrementCounter(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "invalid id", http.StatusBadRequest)
         return
     }
-    var req incReq
+    var req incFreqReq
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        // default delta to 1 if no body provided
-        req.Delta = 1
+        http.Error(w, "bad request", http.StatusBadRequest)
+        return
     }
-    if req.Delta == 0 {
-        req.Delta = 1
+    if req.Frequency == "" {
+        http.Error(w, "frequency required", http.StatusBadRequest)
+        return
     }
-    c, err := models.IncrementCounter(r.Context(), s.db, id, req.Delta)
+    c, err := models.UpdateCounterFrequency(r.Context(), s.db, id, req.Frequency)
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
