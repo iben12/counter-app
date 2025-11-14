@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS counters (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    frequency TEXT NOT NULL DEFAULT '1d',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);

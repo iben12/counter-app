@@ -24,8 +24,8 @@ func main() {
     }
     defer pool.Close()
 
-    // Run simple migration (create table if not exists)
-    if err := db.Migrate(ctx, pool); err != nil {
+    // Run migrations
+    if err := db.Migrate(ctx, databaseURL); err != nil {
         log.Fatalf("migration failed: %v", err)
     }
 
