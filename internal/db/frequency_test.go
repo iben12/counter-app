@@ -68,7 +68,7 @@ func TestNextExpiryTime(t *testing.T) {
 			freq:      "1w",
 			now:       time.Date(2025, 11, 14, 14, 30, 0, 0, time.UTC), // Friday
 			wantHour:  0,
-			wantDay:   16, // Sunday
+			wantDay:   17, // Monday
 			wantMonth: 11,
 			wantYear:  2025,
 		},
