@@ -1,9 +1,0 @@
-CREATE TABLE IF NOT EXISTS counts (
-    id SERIAL PRIMARY KEY,
-    counter_id INTEGER NOT NULL REFERENCES counters(id) ON DELETE CASCADE,
-    value BIGINT NOT NULL DEFAULT 0,
-    expiry TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_counts_counter_id ON counts(counter_id);

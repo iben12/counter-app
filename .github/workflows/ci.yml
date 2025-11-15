@@ -2,11 +2,6 @@ name: CI
 
 on:
   pull_request:
-    paths:
-      - "go.*"
-      - "internal"
-      - "cmd"
-      - ".github"
 
 jobs:
   unit-tests:

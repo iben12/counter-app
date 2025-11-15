@@ -68,8 +68,8 @@ func NextExpiryTime(freq string, now time.Time, timezone string) (time.Time, err
 
 	case "w":
 		// Next N-week boundary: Sunday midnight N weeks from epoch (in timezone)
-		// Epoch Jan 1, 1970 was a Thursday, so first Sunday is Jan 4, 1970
-		epoch := time.Date(1970, 1, 4, 0, 0, 0, 0, loc) // First Sunday
+		// Epoch Jan 1, 1970 was a Thursday, so first Monday is Jan 4, 1970
+		epoch := time.Date(1970, 1, 5, 0, 0, 0, 0, loc) // First Monday
 		weeksSinceEpoch := int(nowInTZ.Sub(epoch).Hours() / (24 * 7))
 		nextBoundaryWeek := ((weeksSinceEpoch / n) + 1) * n
 		boundaryTZ := epoch.AddDate(0, 0, nextBoundaryWeek*7).Truncate(24 * time.Hour)
